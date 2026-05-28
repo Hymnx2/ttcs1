@@ -53,34 +53,47 @@ print(f"-> Đã loại bỏ các dòng lỗi. Kích thước dữ liệu hiện 
 
 
 # ==========================================
+# ==========================================
 # BƯỚC 3: KỸ NGHỆ ĐẶC TRƯNG (FEATURE ENGINEERING)
 # ==========================================
 print("[3/5] Đang thực hiện kỹ nghệ đặc trưng và chuẩn hóa...")
 
-# Tách biến mục tiêu Churn và loại bỏ mã định danh định tính không liên quan
-y = df['Churn'].apply(lambda x: 1 if x == 'Yes' else 0) # Chuyển nhãn mục tiêu thành 0 và 1
-X_raw = df.drop(['customerID', 'Churn'], axis=1)
+# Chuyển nhãn mục tiêu thành 0 và 1
+y = df['Churn'].apply(lambda x: 1 if x == 'Yes' or x == 1 else 0)
+
+# Loại bỏ cột Churn ra khỏi ma trận đặc trưng đầu vào
+X_raw = df.drop(['Churn'], axis=1, errors='ignore')
+
+# TỰ ĐỘNG KHẮC PHỤC: Tìm và xóa bất kỳ cột định danh nào chứa chữ 'ID' (không phân biệt hoa thường)
+id_cols = [col for col in X_raw.columns if 'id' in col.lower()]
+if id_cols:
+    X_raw.drop(columns=id_cols, inplace=True)
+    print(f"-> Đã tự động loại bỏ cột định danh: {id_cols}")
 
 # A. Mã hóa các biến danh mục nhị phân (Label Encoding)
-binary_cols = ['gender', 'Partner', 'Dependents', 'PhoneService', 'PaperlessBilling']
+# Chỉ áp dụng cho các cột dạng object có đúng 2 giá trị độc nhất
+binary_cols = [col for col in X_raw.select_dtypes(include=['object']).columns if X_raw[col].nunique() == 2]
 le = LabelEncoder()
 for col in binary_cols:
     X_raw[col] = le.fit_transform(X_raw[col])
 
 # B. Mã hóa các biến danh mục nhiều nhãn (One-Hot Encoding)
-categorical_cols = ['MultipleLines', 'InternetService', 'OnlineSecurity', 'OnlineBackup', 
-                    'DeviceProtection', 'TechSupport', 'StreamingTV', 'StreamingMovies', 
-                    'Contract', 'PaymentMethod']
+categorical_cols = [col for col in X_raw.select_dtypes(include=['object']).columns]
 X_encoded = pd.get_dummies(X_raw, columns=categorical_cols)
 
-# C. Chuẩn hóa các biến số liên tục có giá trị lớn bằng MinMaxScaler
-scaler = MinMaxScaler()
+# C. Chuẩn hóa các biến số liên tục bằng MinMaxScaler
 numerical_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
+# Đảm bảo các cột số tồn tại trong dữ liệu để tránh lỗi
+numerical_cols = [col for col in numerical_cols if col in X_encoded.columns]
+
+scaler = MinMaxScaler()
 X_encoded[numerical_cols] = scaler.fit_transform(X_encoded[numerical_cols])
 
-feature_columns = X_encoded.columns.tolist()
-print(f"-> Hoàn thành mã hóa. Tổng số đặc trưng đầu vào sau One-Hot: {len(feature_columns)} cột.\n")
+# ĐẢM BẢO AN TOÀN TUYỆT ĐỐI: Chuyển toàn bộ kiểu dữ liệu của ma trận X thành dạng số float32
+X_encoded = X_encoded.astype(np.float32)
 
+feature_columns = X_encoded.columns.tolist()
+print(f"-> Hoàn thành mã hóa. Tổng số đặc trưng đầu vào: {len(feature_columns)} cột.\n")
 
 # ==========================================
 # BƯỚC 4: THIẾT LẬP THỰC NGHIỆM VÀ HUẤN LUYỆN
