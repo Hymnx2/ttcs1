@@ -36,6 +36,7 @@ else:
 
 
 # ==========================================
+# ==========================================
 # BƯỚC 2: LÀM SẠCH DỮ LIỆU (DATA CLEANING)
 # ==========================================
 print("[2/5] Đang tiến hành làm sạch dữ liệu...")
@@ -43,78 +44,67 @@ print("[2/5] Đang tiến hành làm sạch dữ liệu...")
 # Ép kiểu dữ liệu cột TotalCharges về dạng số, chuyển khoảng trắng lỗi thành NaN
 df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
 
-# Thống kê số lượng dòng bị khuyết thiếu
-missing_count = df['TotalCharges'].isnull().sum()
-print(f"-> Phát hiện {missing_count} dòng bị khuyết thiếu tại cột TotalCharges.")
-
-# Loại bỏ các dòng khuyết thiếu (11 dòng tương ứng khách hàng mới tenure = 0)
-df.dropna(subset=['TotalCharges'], inplace=True)
-print(f"-> Đã loại bỏ các dòng lỗi. Kích thước dữ liệu hiện tại: {df.shape[0]} dòng.\n")
+# Xử lý triệt để: Xóa bất kỳ dòng nào chứa giá trị rỗng (NaN) trên TOÀN BỘ DataFrame
+df.dropna(inplace=True)
+print(f"-> Đã loại bỏ hoàn toàn các dòng lỗi/rỗng. Kích thước hiện tại: {df.shape[0]} dòng.\n")
 
 
-# ==========================================
 # ==========================================
 # BƯỚC 3: KỸ NGHỆ ĐẶC TRƯNG (FEATURE ENGINEERING)
 # ==========================================
 print("[3/5] Đang thực hiện kỹ nghệ đặc trưng và chuẩn hóa...")
 
-# Chuyển nhãn mục tiêu thành 0 và 1
-y = df['Churn'].apply(lambda x: 1 if x == 'Yes' or x == 1 else 0)
+# Chuyển nhãn mục tiêu thành số 0 và 1 một cách nghiêm ngặt
+df['Churn_Label'] = df['Churn'].apply(lambda x: 1 if str(x).strip().lower() in ['yes', '1', 'true'] else 0)
 
-# Loại bỏ cột Churn ra khỏi ma trận đặc trưng đầu vào
-X_raw = df.drop(['Churn'], axis=1, errors='ignore')
+# Tách ma trận đặc trưng X_raw (loại bỏ nhãn và các cột định danh dạng chữ)
+X_raw = df.drop(['Churn', 'Churn_Label'], axis=1, errors='ignore')
 
-# TỰ ĐỘNG KHẮC PHỤC: Tìm và xóa bất kỳ cột định danh nào chứa chữ 'ID' (không phân biệt hoa thường)
+# Tự động tìm và loại bỏ bất kỳ cột nào chứa chuỗi định danh 'id'
 id_cols = [col for col in X_raw.columns if 'id' in col.lower()]
 if id_cols:
     X_raw.drop(columns=id_cols, inplace=True)
-    print(f"-> Đã tự động loại bỏ cột định danh: {id_cols}")
 
-# A. Mã hóa các biến danh mục nhị phân (Label Encoding)
-# Chỉ áp dụng cho các cột dạng object có đúng 2 giá trị độc nhất
-binary_cols = [col for col in X_raw.select_dtypes(include=['object']).columns if X_raw[col].nunique() == 2]
-le = LabelEncoder()
-for col in binary_cols:
-    X_raw[col] = le.fit_transform(X_raw[col])
+# A. Tự động phân loại và mã hóa các cột định tính (Object/Categorical)
+categorical_cols = X_raw.select_dtypes(include=['object', 'category']).columns.tolist()
+X_encoded = pd.get_dummies(X_raw, columns=categorical_cols, drop_first=False)
 
-# B. Mã hóa các biến danh mục nhiều nhãn (One-Hot Encoding)
-categorical_cols = [col for col in X_raw.select_dtypes(include=['object']).columns]
-X_encoded = pd.get_dummies(X_raw, columns=categorical_cols)
-
-# C. Chuẩn hóa các biến số liên tục bằng MinMaxScaler
+# B. Chuẩn hóa các biến số liên tục bằng MinMaxScaler
 numerical_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
-# Đảm bảo các cột số tồn tại trong dữ liệu để tránh lỗi
 numerical_cols = [col for col in numerical_cols if col in X_encoded.columns]
 
 scaler = MinMaxScaler()
 X_encoded[numerical_cols] = scaler.fit_transform(X_encoded[numerical_cols])
 
-# ĐẢM BẢO AN TOÀN TUYỆT ĐỐI: Chuyển toàn bộ kiểu dữ liệu của ma trận X thành dạng số float32
-X_encoded = X_encoded.astype(np.float32)
+# C. KIỂM TRA VÀ XỬ LÝ SỰ CỐ NAN/INF PHÁT SINH (NẾU CÓ)
+X_encoded.replace([np.inf, -np.inf], np.nan, inplace=True)
+X_encoded.fillna(0, inplace=True)
 
-feature_columns = X_encoded.columns.tolist()
+# Ép toàn bộ kiểu dữ liệu về kiểu số thực float32 chuẩn hóa
+X_clean = X_encoded.astype(np.float32)
+y_clean = df['Churn_Label'].astype(np.int32)
+
+feature_columns = X_clean.columns.tolist()
 print(f"-> Hoàn thành mã hóa. Tổng số đặc trưng đầu vào: {len(feature_columns)} cột.\n")
+
 
 # ==========================================
 # BƯỚC 4: THIẾT LẬP THỰC NGHIỆM VÀ HUẤN LUYỆN
 # ==========================================
 print("[4/5] Đang phân chia dữ liệu và huấn luyện mô hình...")
 
-# Phân chia dữ liệu theo tỷ lệ nghiêm ngặt 80% Train và 20% Test
-X_train, X_test, y_train, y_test = train_test_split(X_encoded, y, test_size=0.2, random_state=42)
+# Phân chia dữ liệu theo tỷ lệ 80/20
+X_train, X_test, y_train, y_test = train_test_split(X_clean, y_clean, test_size=0.2, random_state=42)
 
-# Khởi tạo và huấn luyện mô hình cơ sở (Logistic Regression)
-lr_model = LogisticRegression(max_iter=1000, solver='liblinear')
+# Khởi tạo mô hình tuyến tính cơ sở
+lr_model = LogisticRegression(max_iter=2000, solver='liblinear')
 lr_model.fit(X_train, y_train)
 
-# Khởi tạo và huấn luyện mô hình cây cải tiến (Random Forest)
+# Khởi tạo mô hình cây quyết định cải tiến
 rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
 rf_model.fit(X_train, y_train)
 
 print("-> Huấn luyện thành công các mô hình thực nghiệm.\n")
-
-
-# ==========================================
 # BƯỚC 5: ĐÁNH GIÁ, SO SÁNH VÀ LƯU TRỮ
 # ==========================================
 print("[5/5] Đang đánh giá hiệu năng hệ thống...")
