@@ -5,27 +5,24 @@ import joblib
 
 st.set_page_config(page_title="AI Churn Predictor", page_icon="🎯", layout="centered")
 
-# Tải cấu hình tài sản học máy
+# Tải an toàn các tài sản học máy từ Backend
 @st.cache_resource
-def load_machine_learning_assets():
+def load_ml_assets():
     model = joblib.load('rf_model.pkl')
     scaler = joblib.load('scaler.pkl')
     columns = joblib.load('feature_columns.pkl')
     return model, scaler, columns
 
 try:
-    model, scaler, feature_columns = load_machine_learning_assets()
-except Exception as e:
-    st.error("Lỗi: Không tìm thấy các tệp tin .pkl. Vui lòng chạy file 'main_pipeline.py' trước để sinh dữ liệu!")
+    model, scaler, feature_columns = load_ml_assets()
+except:
+    st.warning("⚠️ Đang khởi tạo hoặc chờ file cấu hình từ Backend pipeline...")
     st.stop()
 
-# Tiêu đề phần mềm
-st.title("🎯 PHẦN MỀM DỰ BÁO KHÁCH HÀNG RỜI BỎ DỊCH VỤ VIỄN THÔNG")
+st.title("🎯 PHẦN MỀM DỰ BÁO KHÁCH HÀNG RỜI MẠNG")
 st.markdown("---")
 
 st.subheader("📋 Nhập thông tin hành vi của Khách hàng:")
-
-# Thiết kế layout dạng 2 cột song song
 col1, col2 = st.columns(2)
 
 with col1:
@@ -40,13 +37,11 @@ with col2:
     payment_method = st.selectbox("Phương thức thanh toán:", ["Electronic check", "Mailed check", "Bank transfer", "Credit card"])
     paperless = st.selectbox("Nhận hóa đơn điện tử:", ["Yes", "No"])
 
-# Xử lý khi nhấn nút dự báo
 if st.button("🚀 PHÂN TÍCH VÀ XỬ LÝ RỦI RO", use_container_width=True):
-    
-    # Tạo cấu trúc dữ liệu trống tương thích với tập huấn luyện
+    # Khởi tạo ma trận đầu vào khớp 100% với số lượng cột của tập Train
     input_template = {col: 0 for col in feature_columns}
     
-    # Đồng bộ hóa và chuẩn hóa các trường số học đầu vào
+    # Chuẩn hóa dữ liệu số bằng scaler đã lưu từ Train
     df_num = pd.DataFrame([[tenure, monthly_charges, total_charges]], columns=['tenure', 'MonthlyCharges', 'TotalCharges'])
     scaled_num = scaler.transform(df_num)
     
@@ -54,34 +49,24 @@ if st.button("🚀 PHÂN TÍCH VÀ XỬ LÝ RỦI RO", use_container_width=True)
     input_template['MonthlyCharges'] = scaled_num[0][1]
     input_template['TotalCharges'] = scaled_num[0][2]
     
-    # Thiết lập One-Hot mã hóa các trường phân loại người dùng lựa chọn
+    # Khớp các lựa chọn của người dùng vào cấu trúc One-Hot tương ứng
     if f'Contract_{contract}' in input_template: input_template[f'Contract_{contract}'] = 1
     if f'InternetService_{internet_service}' in input_template: input_template[f'InternetService_{internet_service}'] = 1
     if f'TechSupport_{tech_support}' in input_template: input_template[f'TechSupport_{tech_support}'] = 1
     if f'PaymentMethod_{payment_method}' in input_template: input_template[f'PaymentMethod_{payment_method}'] = 1
     if f'PaperlessBilling_{paperless}' in input_template: input_template[f'PaperlessBilling_{paperless}'] = 1
 
-    # Chuyển đổi sang định dạng DataFrame chuẩn để đưa vào mô hình
-    final_features = pd.DataFrame([input_template])[feature_columns]
+    # Chuyển đổi thành DataFrame chuẩn hóa float32 đúng thứ tự cột
+    final_features = pd.DataFrame([input_template])[feature_columns].astype(np.float32)
     
-    # Dự đoán xác suất rủi ro Churn (Yes)
+    # Dự đoán xác suất rủi ro Churn
     probability = model.predict_proba(final_features)[0][1]
     
     st.markdown("---")
     st.subheader("📊 Kết quả phân tích hệ thống:")
     st.progress(int(probability * 100))
     
-    # Đưa ra kết quả cảnh báo trực quan
     if probability >= 0.5:
-        st.error(f"🚨 CẢNH BÁO: Khách hàng có nguy cơ rời mạng rất cao! (Tỷ lệ rủi ro: {probability*100:.1f}%)")
-        st.markdown("""
-        **💡 GỢI Ý CHIẾN LƯỢC GIỮ CHÂN (MARKETING / CSKH):**
-        * Khách hàng hiện tại đang dùng gói cước ngắn hạn với mức chi phí cao. 
-        * **Hành động tức thì:** Tự động gửi mã coupon giảm giá **15% cước phí** trong 6 tháng tiếp theo nếu khách hàng đồng ý nâng cấp và ký cam kết gói hợp đồng hạn định **1 năm**.
-        """)
+        st.error(f"🚨 CẢNH BÁO: Khách hàng có nguy cơ rời mạng cao! (Tỷ lệ: {probability*100:.1f}%)")
     else:
-        st.success(f"✅ AN TOÀN: Khách hàng thuộc nhóm ổn định và trung thành. (Tỷ lệ rủi ro thấp: {probability*100:.1f}%)")
-        st.markdown("""
-        **💡 KHUYẾN NGHỊ:**
-        * Tiếp tục duy trì chính sách chăm sóc định kỳ và các chương trình ưu đãi tích điểm thành viên hiện có.
-        """)
+        st.success(f"✅ AN TOÀN: Khách hàng thuộc nhóm ổn định. (Tỷ lệ rủi ro thấp: {probability*100:.1f}%)")
