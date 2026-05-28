@@ -12,18 +12,27 @@ print("🚀 KHỞI CHẠY TIẾN TRÌNH HUẤN LUYỆN MÔ HÌNH CHURN PREDICTIO
 print("=========================================================\n")
 
 # ==========================================
+# ==========================================
 # BƯỚC 1: TẢI VÀ KHÁM PHÁ DỮ LIỆU NHANH (EDA)
 # ==========================================
 print("[1/5] Đang tải bộ dữ liệu...")
-# Đường dẫn mặc định tới file dữ liệu thô
 df = pd.read_csv('Telco-Customer-Churn.csv') 
 print(f"-> Kích thước dữ liệu thô: {df.shape[0]} dòng, {df.shape[1]} cột.\n")
 
-# Kiểm tra tỷ lệ mất cân bằng nhãn mục tiêu
+# Kiểm tra tỷ lệ mất cân bằng nhãn mục tiêu (Sửa đoạn này để tránh KeyError)
 churn_rate = df['Churn'].value_counts(normalize=True) * 100
 print(f"-> Tỷ lệ phân bổ nhãn mục tiêu Churn:")
-print(f"   - No (Ở lại): {churn_rate['No']:.1f}%")
-print(f"   - Yes (Rời mạng): {churn_rate['Yes']:.1f}%\n")
+
+# Tự động kiểm tra xem nhãn đang là dạng chữ (Yes/No) hay dạng số (1/0)
+if 'No' in churn_rate:
+    print(f"   - No (Ở lại): {churn_rate['No']:.1f}%")
+    print(f"   - Yes (Rời mạng): {churn_rate['Yes']:.1f}%\n")
+elif 0 in churn_rate:
+    print(f"   - 0 (Ở lại): {churn_rate[0]:.1f}%")
+    print(f"   - 1 (Rời mạng): {churn_rate[1]:.1f}%\n")
+else:
+    # Trường hợp nhãn mang tên khác, in ra toàn bộ để kiểm tra
+    print(churn_rate)
 
 
 # ==========================================
